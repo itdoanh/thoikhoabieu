@@ -1,0 +1,499 @@
+import { useMemo, useState, useEffect } from 'react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core'
+import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  AlertTriangle,
+  BarChart3,
+  Bell,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Coffee,
+  Download,
+  Filter,
+  Moon,
+  Palette,
+  Plus,
+  Save,
+  Search,
+  Settings2,
+  Sparkles,
+  Sun,
+  Target,
+} from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import clsx from 'clsx'
+import CalendarView from './components/CalendarView'
+import EditPanel from './components/EditPanel'
+import StatCard from './components/StatCard'
+import ChartPanel from './components/ChartPanel'
+
+const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN']
+const DAY_START = 6  // 06:00
+const DAY_END = 23   // 23:00
+const DAY_MINUTES = (DAY_END - DAY_START) * 60
+
+const categoryColors = {
+  Học: 'from-sky-500 to-cyan-400',
+  Làm: 'from-violet-500 to-fuchsia-500',
+  Dạy: 'from-amber-500 to-orange-400',
+  'Cá nhân': 'from-emerald-500 to-lime-400',
+}
+
+const initialEvents = [
+  {
+    id: 1,
+    title: 'Toán cao cấp',
+    day: 'Thứ 2',
+    start: '08:00',
+    end: '09:45',
+    category: 'Học',
+    room: 'A204',
+    owner: 'Nhóm A',
+    priority: 'Cao',
+    progress: 76,
+    notes: 'Ôn đạo hàm riêng và bài tập chương 3.',
+  },
+  {
+    id: 2,
+    title: 'Sprint planning',
+    day: 'Thứ 2',
+    start: '13:00',
+    end: '14:00',
+    category: 'Làm',
+    room: 'Google Meet',
+    owner: 'Product Team',
+    priority: 'Cao',
+    progress: 92,
+    notes: 'Chốt timeline và phân chia ticket tuần này.',
+  },
+  {
+    id: 3,
+    title: 'Lớp IELTS 7.0',
+    day: 'Thứ 3',
+    start: '18:00',
+    end: '19:30',
+    category: 'Dạy',
+    room: 'B12',
+    owner: '12 học viên',
+    priority: 'Vừa',
+    progress: 64,
+    notes: 'Speaking part 2, review vocabulary chủ đề work.',
+  },
+  {
+    id: 4,
+    title: 'Deep work dự án',
+    day: 'Thứ 4',
+    start: '10:00',
+    end: '12:00',
+    category: 'Làm',
+    room: 'Focus room',
+    owner: 'Cá nhân',
+    priority: 'Cao',
+    progress: 58,
+    notes: 'Tắt thông báo, hoàn thành module báo cáo.',
+  },
+  {
+    id: 5,
+    title: 'Thực hành Hóa',
+    day: 'Thứ 5',
+    start: '08:00',
+    end: '10:00',
+    category: 'Học',
+    room: 'Lab 3',
+    owner: 'Lớp 11A1',
+    priority: 'Vừa',
+    progress: 81,
+    notes: 'Mang áo blouse, kính bảo hộ và báo cáo tuần trước.',
+  },
+  {
+    id: 6,
+    title: 'Gym + phục hồi',
+    day: 'Thứ 6',
+    start: '18:00',
+    end: '19:00',
+    category: 'Cá nhân',
+    room: 'FitHub',
+    owner: 'Cá nhân',
+    priority: 'Thấp',
+    progress: 43,
+    notes: 'Upper body nhẹ, ngủ sớm trước ngày kiểm tra.',
+  },
+  {
+    id: 7,
+    title: 'Workshop AI productivity',
+    day: 'Thứ 7',
+    start: '15:00',
+    end: '17:00',
+    category: 'Dạy',
+    room: 'Auditorium',
+    owner: 'Cộng đồng',
+    priority: 'Cao',
+    progress: 88,
+    notes: 'Demo prompt, automation và workflow học tập.',
+  },
+]
+
+const habits = [
+  { label: 'Ngủ đủ 7h', value: 83, color: 'bg-indigo-500' },
+  { label: 'Tự học sâu', value: 71, color: 'bg-cyan-500' },
+  { label: 'Không trễ hạn', value: 94, color: 'bg-emerald-500' },
+]
+
+const templates = ['Học sinh THPT', 'Sinh viên đại học', 'Giáo viên bộ môn', 'Nhân viên hybrid', 'Freelancer']
+
+function App() {
+  const [events, setEvents] = useState(initialEvents)
+  const [selectedId, setSelectedId] = useState(initialEvents[0].id)
+  const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('Tất cả')
+  const [viewMode, setViewMode] = useState('Tuần')
+  const [theme, setTheme] = useState('Aurora')
+  const [activeId, setActiveId] = useState(null)
+
+  // Setup dnd-kit sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
+
+  const activeEvent = activeId ? events.find(e => e.id === Number(activeId)) : null
+  const selectedEvent = events.find((e) => e.id === selectedId)
+
+  // Expose addEventAtSlot for CalendarView
+  useEffect(() => {
+    window.addEventAtSlot = addEventAtSlot
+    return () => {
+      delete window.addEventAtSlot
+    }
+  }, [events])
+  const filteredEvents = events.filter((event) => {
+    const text = `${event.title} ${event.room} ${event.owner} ${event.notes}`.toLowerCase()
+    const matchesQuery = text.includes(query.toLowerCase())
+    const matchesCategory = category === 'Tất cả' || event.category === category
+    return matchesQuery && matchesCategory
+  })
+
+  const stats = useMemo(() => {
+    const focusHours = events.reduce((total, event) => total + durationHours(event.start, event.end), 0)
+    const highPriority = events.filter((event) => event.priority === 'Cao').length
+    const avgProgress = Math.round(events.reduce((total, event) => total + event.progress, 0) / events.length)
+    return [
+      { label: 'Giờ đã lên lịch', value: `${focusHours}h`, icon: Clock3, tone: 'text-cyan-300' },
+      { label: 'Việc ưu tiên cao', value: highPriority, icon: Target, tone: 'text-rose-300' },
+      { label: 'Tiến độ trung bình', value: `${avgProgress}%`, icon: CheckCircle2, tone: 'text-emerald-300' },
+      { label: 'Nhắc nhở hôm nay', value: 12, icon: Bell, tone: 'text-amber-300' },
+    ]
+  }, [events])
+
+  const chartData = days.map((day) => ({
+    day,
+    hours: Number(
+      events
+        .filter((event) => event.day === day)
+        .reduce((total, event) => total + durationHours(event.start, event.end), 0)
+        .toFixed(1),
+    ),
+  }))
+
+  const pieData = Object.keys(categoryColors).map((name) => ({
+    name,
+    value: events.filter((event) => event.category === name).length,
+  }))
+
+  const updateSelected = (field, value) => {
+    setEvents((current) => current.map((event) => (event.id === selectedEvent.id ? { ...event, [field]: value } : event)))
+  }
+
+  const deleteSelected = () => {
+    const nextEvents = events.filter((event) => event.id !== selectedEvent.id)
+    setEvents(nextEvents)
+    setSelectedId(nextEvents[0]?.id)
+  }
+
+  const addEvent = () => {
+    const newEvent = {
+      id: events.length > 0 ? Math.max(...events.map((e) => e.id)) + 1 : 1,
+      title: 'Lịch mới',
+      day: 'Thứ 2',
+      start: '08:00',
+      end: '10:00',
+      category: 'Học',
+      room: '',
+      owner: '',
+      priority: 'Vừa',
+      progress: 0,
+      notes: '',
+    }
+    setEvents([...events, newEvent])
+    setSelectedId(newEvent.id)
+  }
+
+  const addEventAtSlot = (day, slot) => {
+    const endHour = parseInt(slot.split(':')[0]) + 2
+    const endTime = `${endHour.toString().padStart(2, '0')}:00`
+
+    const newEvent = {
+      id: events.length > 0 ? Math.max(...events.map((e) => e.id)) + 1 : 1,
+      title: 'Lịch mới',
+      day,
+      start: slot,
+      end: endTime,
+      category: 'Học',
+      room: '',
+      owner: '',
+      priority: 'Vừa',
+      progress: 0,
+      notes: '',
+    }
+    setEvents([...events, newEvent])
+    setSelectedId(newEvent.id)
+  }
+
+  const saveSchedule = () => {
+    try {
+      localStorage.setItem('timecraft_schedule', JSON.stringify(events))
+      alert('✅ Đã lưu lịch thành công!')
+    } catch (error) {
+      alert('❌ Lỗi khi lưu: ' + error.message)
+    }
+  }
+
+  const handleDragStart = (event) => {
+    setActiveId(event.active.id)
+  }
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event
+    setActiveId(null)
+
+    if (!over) return
+
+    const draggedEvent = events.find(e => e.id === active.id)
+    if (!draggedEvent) return
+
+    // Check if dropped on a day column
+    if (over.id.toString().startsWith('day-')) {
+      const targetDay = over.id.toString().replace('day-', '')
+
+      // Get the actual drop position from the pointer
+      const columnElement = document.querySelector(`[data-day="${targetDay}"]`)
+      if (columnElement && event.activatorEvent) {
+        const rect = columnElement.getBoundingClientRect()
+
+        // Use the final pointer position, not delta
+        const pointerY = event.activatorEvent.clientY || (rect.top + rect.height / 2)
+        const relativeY = Math.max(0, Math.min(rect.height, pointerY - rect.top))
+
+        // Calculate time from absolute Y position
+        const percentage = relativeY / rect.height
+        const minutes = Math.floor(percentage * DAY_MINUTES)
+        const hour = DAY_START + Math.floor(minutes / 60)
+        const minute = Math.floor((minutes % 60) / 15) * 15 // Snap to 15min
+        const newStart = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+
+        // Calculate new end time (preserve duration)
+        const duration = getDurationMinutes(draggedEvent.start, draggedEvent.end)
+        const endMinutes = minutes + duration
+        const endHour = DAY_START + Math.floor(endMinutes / 60)
+        const endMinute = endMinutes % 60
+
+        // Clamp to valid time range
+        if (endHour > DAY_END) {
+          return // Don't allow drop if event would extend past day end
+        }
+
+        const newEnd = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`
+
+        setEvents((items) =>
+          items.map((item) =>
+            item.id === active.id
+              ? { ...item, day: targetDay, start: newStart, end: newEnd }
+              : item
+          )
+        )
+        return
+      }
+    }
+
+    // Check if dropped on another event card (only change day, keep time)
+    const droppedOnEvent = events.find(e => e.id === over.id)
+    if (droppedOnEvent && droppedOnEvent.id !== active.id) {
+      setEvents((items) =>
+        items.map((item) =>
+          item.id === active.id
+            ? { ...item, day: droppedOnEvent.day }
+            : item
+        )
+      )
+      return
+    }
+  }
+
+  function getDurationMinutes(start, end) {
+    const [sh, sm] = start.split(':').map(Number)
+    const [eh, em] = end.split(':').map(Number)
+    return (eh * 60 + em) - (sh * 60 + sm)
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,#38bdf855,transparent_30%),radial-gradient(circle_at_top_right,#a855f755,transparent_30%),linear-gradient(135deg,#020617,#0f172a_45%,#111827)]" />
+      <div className="relative mx-auto flex max-w-[1500px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/10 p-5 shadow-2xl shadow-cyan-950/30 backdrop-blur-2xl lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 shadow-lg shadow-cyan-500/30">
+              <CalendarDays className="size-7" />
+            </div>
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.35em] text-cyan-200"><Sparkles className="size-4" /> TimeCraft Pro</p>
+              <h1 className="text-3xl font-black tracking-tight sm:text-5xl">Quản lý thời khóa biểu thông minh</h1>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {['Tuần', 'Tháng', 'Kanban', 'Timeline'].map((mode) => (
+              <button key={mode} onClick={() => setViewMode(mode)} className={clsx('rounded-full px-4 py-2 text-sm font-bold transition', viewMode === mode ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200 hover:bg-white/20')}>
+                {mode}
+              </button>
+            ))}
+            <button onClick={saveSchedule} className="rounded-full bg-cyan-400 px-5 py-2.5 font-black text-slate-950 shadow-lg shadow-cyan-400/25"><Save className="mr-2 inline size-4" />Lưu lịch</button>
+          </div>
+        </header>
+
+        <section className="flex flex-col gap-6 lg:grid lg:grid-cols-[260px_1fr] 2xl:grid-cols-[280px_1fr_360px]">
+          <aside className="space-y-6 rounded-[2rem] border border-white/10 bg-white/10 p-5 backdrop-blur-2xl lg:order-1">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black">Điều khiển</h2>
+              <Settings2 className="text-cyan-200" />
+            </div>
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-[0.25em] text-slate-400">Tìm kiếm</label>
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
+                <Search className="size-4 text-slate-400" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Môn học, phòng, ghi chú..." className="w-full bg-transparent text-sm outline-none placeholder:text-slate-500" />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-[0.25em] text-slate-400">Bộ lọc</label>
+              <select value={category} onChange={(event) => setCategory(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-3 text-sm font-semibold outline-none">
+                {['Tất cả', ...Object.keys(categoryColors)].map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {templates.map((item) => <button key={item} className="rounded-2xl border border-white/10 bg-white/5 p-3 text-left text-sm font-bold hover:bg-white/10">{item}</button>)}
+            </div>
+            <button onClick={addEvent} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-violet-500 px-4 py-3 font-black text-slate-950 shadow-xl shadow-cyan-500/20">
+              <Plus className="size-5" /> Thêm lịch mới
+            </button>
+            <div className="rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4">
+              <div className="mb-2 flex items-center gap-2 font-black text-amber-100"><AlertTriangle className="size-5" /> Cảnh báo xung đột</div>
+              <p className="text-sm text-amber-100/80">2 khung giờ có khả năng quá tải. Gợi ý chuyển Deep work sang 09:00 Thứ 4.</p>
+            </div>
+          </aside>
+
+          <div className="flex flex-col gap-6 lg:order-2">
+          <section className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-4">
+              {stats.map((stat) => <StatCard key={stat.label} {...stat} />)}
+            </div>
+
+            <CalendarView
+              events={filteredEvents}
+              onEventChange={(eventId, changes) => {
+                setEvents(current =>
+                  current.map(event =>
+                    event.id === eventId ? { ...event, ...changes } : event
+                  )
+                )
+              }}
+              onSelectEvent={(eventId) => setSelectedId(eventId)}
+              selectedId={selectedId}
+            />
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ChartPanel title="Tải học/làm theo ngày" icon={BarChart3}>
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+                    <XAxis dataKey="day" stroke="#cbd5e1" />
+                    <YAxis stroke="#cbd5e1" />
+                    <Tooltip contentStyle={{ background: '#020617', border: '1px solid #334155', borderRadius: 16 }} />
+                    <Bar dataKey="hours" radius={[12, 12, 0, 0]} fill="#22d3ee" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartPanel>
+              <ChartPanel title="Tỷ lệ loại hoạt động" icon={Filter}>
+                <ResponsiveContainer width="100%" height={230}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={85} innerRadius={48} paddingAngle={5}>
+                      {pieData.map((entry, index) => <Cell key={entry.name} fill={['#38bdf8', '#a855f7', '#f59e0b', '#34d399'][index]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: '#020617', border: '1px solid #334155', borderRadius: 16 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartPanel>
+            </div>
+          </section>
+
+          <aside className="space-y-6 2xl:order-3">
+            <EditPanel selectedEvent={selectedEvent} updateSelected={updateSelected} deleteSelected={deleteSelected} />
+
+            <section className="rounded-[2rem] border border-white/10 bg-white/10 p-5 backdrop-blur-2xl">
+              <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-black">Sức khỏe lịch trình</h2><Coffee className="text-amber-200" /></div>
+              <div className="space-y-4">
+                {habits.map((habit) => <Progress key={habit.label} {...habit} />)}
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 p-5 backdrop-blur-2xl">
+              <div className="mb-4 flex items-center gap-3"><Palette className="text-fuchsia-200" /><h2 className="text-xl font-black">Cá nhân hóa</h2></div>
+              <div className="grid grid-cols-2 gap-3">
+                {['Aurora', 'Minimal', 'Focus', 'Dark Pro'].map((item) => <button key={item} onClick={() => setTheme(item)} className={clsx('rounded-2xl border p-3 text-sm font-black', theme === item ? 'border-cyan-300 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/5')}>{item}</button>)}
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs font-bold text-slate-300">
+                <div className="rounded-2xl bg-white/10 p-3"><Sun className="mx-auto mb-1" />Sáng</div>
+                <div className="rounded-2xl bg-white/10 p-3"><Moon className="mx-auto mb-1" />Tối</div>
+                <div className="rounded-2xl bg-white/10 p-3"><Download className="mx-auto mb-1" />Xuất</div>
+              </div>
+            </section>
+          </aside>
+          </div>
+        </section>
+      </div>
+    </main>
+    <DragOverlay dropAnimation={null}>
+      {activeEvent ? (
+        <div className="w-48 opacity-90 cursor-grabbing">
+          <div className={clsx('rounded-2xl bg-gradient-to-br p-[1px] shadow-2xl', categoryColors[activeEvent.category])}>
+            <div className="rounded-2xl bg-slate-950/90 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="rounded-full bg-white/15 px-2 py-1 text-[10px] font-black uppercase tracking-widest">{activeEvent.category}</span>
+              </div>
+              <h3 className="font-black leading-tight text-white line-clamp-2 mb-1">{activeEvent.title}</h3>
+              <p className="text-xs text-slate-300 line-clamp-1">{activeEvent.start}–{activeEvent.end}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </DragOverlay>
+    </DndContext>
+  )
+}
+
+function Progress({ label, value, color }) {
+  return <div><div className="mb-2 flex justify-between text-sm font-bold"><span>{label}</span><span>{value}%</span></div><div className="h-2 rounded-full bg-white/10"><div className={clsx('h-full rounded-full', color)} style={{ width: `${value}%` }} /></div></div>
+}
+
+function durationHours(start, end) {
+  const [startHour, startMinute] = start.split(':').map(Number)
+  const [endHour, endMinute] = end.split(':').map(Number)
+  return Number((((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60).toFixed(1))
+}
+
+export default App
