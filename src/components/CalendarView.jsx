@@ -16,6 +16,39 @@ export default function CalendarView({ events, onEventChange, onSelectEvent, sel
     })
   )
 
+  const handleEventResize = useCallback((eventId, resizeData) => {
+    const event = events.find(e => e.id === eventId)
+    if (!event) return
+
+    const [startHour, startMin] = event.start.split(':').map(Number)
+    const [endHour, endMin] = event.end.split(':').map(Number)
+
+    const currentStartMinutes = (startHour - 6) * 60 + startMin
+    const currentEndMinutes = (endHour - 6) * 60 + endMin
+    const currentDuration = currentEndMinutes - currentStartMinutes
+
+    if (resizeData.type === 'bottom') {
+      // Change end time
+      const newEndMinutes = currentStartMinutes + resizeData.duration
+      const newEndHour = 6 + Math.floor(newEndMinutes / 60)
+      const newEndMin = newEndMinutes % 60
+
+      if (newEndHour >= 6 && newEndHour <= 23) {
+        const newEnd = `${String(newEndHour).padStart(2, '0')}:${String(newEndMin).padStart(2, '0')}`
+        onEventChange(eventId, { end: newEnd })
+      }
+    } else if (resizeData.type === 'top') {
+      // Change start time
+      const newStartHour = 6 + Math.floor(resizeData.newStartMinutes / 60)
+      const newStartMin = resizeData.newStartMinutes % 60
+
+      if (newStartHour >= 6 && newStartHour < endHour) {
+        const newStart = `${String(newStartHour).padStart(2, '0')}:${String(newStartMin).padStart(2, '0')}`
+        onEventChange(eventId, { start: newStart })
+      }
+    }
+  }, [events, onEventChange])
+
   const handleDragStart = useCallback((event) => {
     setActiveId(event.active.id)
   }, [])
@@ -89,6 +122,7 @@ export default function CalendarView({ events, onEventChange, onSelectEvent, sel
                 events={dayEvents}
                 onSelectEvent={onSelectEvent}
                 selectedId={selectedId}
+                onEventResize={handleEventResize}
               />
             )
           })}

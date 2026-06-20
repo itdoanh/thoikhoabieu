@@ -104,7 +104,7 @@ function layoutEvents(events) {
   })
 }
 
-export default memo(function DayColumn({ day, events, selectedId, onSelectEvent }) {
+export default memo(function DayColumn({ day, events, selectedId, onSelectEvent, onEventResize }) {
   const { setNodeRef } = useDroppable({ id: `day-${day}` })
 
   const arrangedEvents = useMemo(() => layoutEvents(events), [events])
@@ -147,7 +147,7 @@ export default memo(function DayColumn({ day, events, selectedId, onSelectEvent 
         {arrangedEvents.map(({ event, top, height, left, width }) => (
           <div
             key={event.id}
-            className="absolute p-1 pointer-events-none"
+            className="absolute p-1 pointer-events-none resize-container"
             style={{
               top: `${top}%`,
               height: `${Math.max(height, 12)}%`,
@@ -161,6 +161,28 @@ export default memo(function DayColumn({ day, events, selectedId, onSelectEvent 
                 event={event}
                 isSelected={event.id === selectedId}
                 onSelect={() => onSelectEvent(event.id)}
+                onResize={(eventId, resizeData) => {
+                  if (onEventResize) {
+                    // Calculate new times based on resize
+                    const columnHeight = 900 // Match min-h-[900px]
+                    const DAY_MINUTES = (23 - 6) * 60 // 6am to 11pm
+
+                    if (resizeData.handle === 'bottom') {
+                      // Resizing from bottom - change end time
+                      const heightPercent = (resizeData.newHeight / columnHeight) * 100
+                      const minutes = Math.round((heightPercent / 100) * DAY_MINUTES)
+                      const duration = Math.max(15, Math.round(minutes / 15) * 15) // Snap to 15min, min 15min
+
+                      onEventResize(eventId, { type: 'bottom', duration })
+                    } else if (resizeData.handle === 'top') {
+                      // Resizing from top - change start time
+                      const newTopPercent = ((resizeData.startTop + resizeData.deltaY) / columnHeight) * 100
+                      const newStartMinutes = Math.round((newTopPercent / 100) * DAY_MINUTES / 15) * 15
+
+                      onEventResize(eventId, { type: 'top', newStartMinutes })
+                    }
+                  }
+                }}
               />
             </div>
           </div>
