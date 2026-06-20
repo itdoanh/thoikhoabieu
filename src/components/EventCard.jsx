@@ -36,19 +36,36 @@ export default memo(function EventCard({ event, isSelected, onSelect, onResize }
     const handleMouseMove = (moveEvent) => {
       const deltaY = moveEvent.clientY - startY
 
-      if (onResize) {
-        onResize(event.id, {
-          handle,
-          deltaY,
-          startHeight,
-          startTop,
-          newHeight: handle === 'bottom' ? startHeight + deltaY : startHeight - deltaY
-        })
+      // Real-time visual feedback - update DOM directly
+      if (handle === 'bottom') {
+        const newHeight = Math.max(60, startHeight + deltaY)
+        cardContainer.style.height = `${newHeight}px`
+      } else if (handle === 'top') {
+        const newHeight = Math.max(60, startHeight - deltaY)
+        const newTop = startTop + deltaY
+        cardContainer.style.height = `${newHeight}px`
+        cardContainer.style.top = `${newTop}px`
       }
     }
 
     const handleMouseUp = () => {
       setIsResizing(false)
+
+      // Get final dimensions
+      const finalHeight = cardContainer.offsetHeight
+      const finalTop = cardContainer.offsetTop
+
+      // Send final data to parent for time calculation
+      if (onResize) {
+        onResize(event.id, {
+          handle,
+          startHeight,
+          startTop,
+          finalHeight,
+          finalTop,
+        })
+      }
+
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }

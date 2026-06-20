@@ -163,21 +163,21 @@ export default memo(function DayColumn({ day, events, selectedId, onSelectEvent,
                 onSelect={() => onSelectEvent(event.id)}
                 onResize={(eventId, resizeData) => {
                   if (onEventResize) {
-                    // Calculate new times based on resize
-                    const columnHeight = 900 // Match min-h-[900px]
-                    const DAY_MINUTES = (23 - 6) * 60 // 6am to 11pm
+                    // Calculate new times from final dimensions
+                    const columnHeight = 900
+                    const DAY_MINUTES = (23 - 6) * 60
 
                     if (resizeData.handle === 'bottom') {
-                      // Resizing from bottom - change end time
-                      const heightPercent = (resizeData.newHeight / columnHeight) * 100
+                      // Bottom resize - change end time
+                      const heightPercent = (resizeData.finalHeight / columnHeight) * 100
                       const minutes = Math.round((heightPercent / 100) * DAY_MINUTES)
-                      const duration = Math.max(15, Math.round(minutes / 15) * 15) // Snap to 15min, min 15min
+                      const duration = Math.max(15, Math.round(minutes / 15) * 15)
 
                       onEventResize(eventId, { type: 'bottom', duration })
                     } else if (resizeData.handle === 'top') {
-                      // Resizing from top - change start time
-                      const newTopPercent = ((resizeData.startTop + resizeData.deltaY) / columnHeight) * 100
-                      const newStartMinutes = Math.round((newTopPercent / 100) * DAY_MINUTES / 15) * 15
+                      // Top resize - change start time
+                      const topPercent = (resizeData.finalTop / columnHeight) * 100
+                      const newStartMinutes = Math.round((topPercent / 100) * DAY_MINUTES / 15) * 15
 
                       onEventResize(eventId, { type: 'top', newStartMinutes })
                     }
