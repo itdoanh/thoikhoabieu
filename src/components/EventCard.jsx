@@ -38,13 +38,18 @@ export default memo(function EventCard({ event, isSelected, onSelect, onResize }
 
       // Real-time visual feedback - update DOM directly
       if (handle === 'bottom') {
+        // Bottom resize: ONLY change height, top stays fixed
         const newHeight = Math.max(60, startHeight + deltaY)
         cardContainer.style.height = `${newHeight}px`
+        // Don't touch top!
       } else if (handle === 'top') {
+        // Top resize: change BOTH top and height to keep bottom fixed
         const newHeight = Math.max(60, startHeight - deltaY)
-        const newTop = startTop + deltaY
-        cardContainer.style.height = `${newHeight}px`
+        const heightDiff = startHeight - newHeight
+        const newTop = startTop + heightDiff
+
         cardContainer.style.top = `${newTop}px`
+        cardContainer.style.height = `${newHeight}px`
       }
     }
 
